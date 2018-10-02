@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css" integrity="sha384-nn4HPE8lTHyVtfCBi5yW9d20FjT8BJwUXyWZT9InLYax14RDjBj46LmSztkmNP9w" crossorigin="anonymous">
+    <title>Chat</title>
+    <style>
+      body { font: 13px Helvetica, Arial; }
+
+      .pure-button {
+        width: 95%
+      }
+
+      form { background: rgb(148, 142, 142); padding: 3px; position: fixed; bottom: 0; width: 78.1%; margin-left: 1.5%; }
+      form input { border: 0; padding: 10px; width: 90%; margin-right: .5%; }
+      form button { width: 9%; background: rgb(130, 224, 255); border: none; padding: 10px; }
+      #messages { top: 20px; list-style-type: none; margin: 0; padding: 0; }
+      #messages li { padding: 5px 10px; width: 100%; height: 90%; }
+      #messages li:nth-child(even) { background: #eee; }
+      ul { list-style: none; }
+
+      .button-success,
+      .button-error,
+      .button-warning,
+      .button-secondary {
+        color: white;
+        border-radius: 4px;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+        width: 95%;
+      }
+      .button-success {
+        background: rgb(28, 184, 65); /* this is a green */
+      }
+      .button-error {
+        background: rgb(202, 60, 60); /* this is a maroon */
+      }
+
+      .button-warning {
+        background: rgb(223, 117, 20); /* this is an orange */
+      }
+
+      .button-secondary {
+        background: rgb(66, 184, 221); /* this is a light blue */
+      }
+      .chat-restricted {
+        height: 501px;
+        border: 1px solid gray;
+        border-radius: 4px;
+        margin-left: 1.8%;
+        }
+      .chatters-restricted {
+        height: 536px;
+        border: 1px solid gray;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="current" style="display: none"><%=current%></p>
+    <div class="main pure-g">
+      <div class="pure-u-4-5">
+        <h2 style="margin-left: 1.8%;">Chat</h2>
+        <div class="pure-menu pure-menu-scrollable chat-restricted" >
+          <ul id="messages" display="none"></ul>
+        </div>
+        <div>
+          <form action="/index" method="post" class="pure-form" >
+            <input id="m" autocomplete="off" name="content" class="pure-input-rounded" disabled /><button class="pure-button pure-button-disabled" style="width: 9%;">Send</button>
+          </form>
+        </div>
+      </div>
+      <div class="pure-u-1-5">
+        <ul id="chatters" class="pure-list">
+          <h2>Chatters</h2>
+          <% users.forEach(function (user) { %>
+            <% var unread = 0; %>
+            <% messages.forEach(function (message){ %>
+              <% if (message.from == user.username && message.to == current && message.read == 0) { %>
+                <% unread = 1; %>
+              <% } %>
+            <% }); %>
+            <% if (user.username != current){ %>
+              <% if (unread == 0){ %>
+                <li>  
+                  <h2><button class="chat_selection pure-button" style="width: 95%"><%= user.username %></button></h2>
+                </li>   
+              <% } else{ %>  
+                <li> 
+                  <h2><button class="chat_selection pure-button button-error"><%= user.username %></button></h2> 
+                </li>   
+              <% } %> 
+            <% } %>                                 
+          <% }); %>
+        </ul>
+      </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+    <script>
+    $(function () {
+      var socket = io();
+      var selected = "";
+      $('.chat_selection').click(function(){
+        $('.pure-button-disabled').removeClass("pure-button-disabled");
+        $('.pure-input-rounded').removeAttr("disabled");
+        $('.chat_selection').each(function() {
+          if($(this).hasClass("button-secondary")){
+            $(this).removeClass("button-secondary");
+          }
+        });     
+        $(this).addClass("button-secondary");
+        selected = $(this).text();
+        if($(this).hasClass("button-error")){
+          $(this).removeClass("button-error").addClass("button-secondary");
+        }
+        var curr = document.getElementById("current").innerText;
+        var selectionData = {
+          selected: selected,
+          current: curr
+        };
+        $.ajax({
+          type: "POST",
+          url: "/index/selection",
+          data: selectionData,
+          success: function(data) {
+            $('#messages').empty();
+            data.selectionMessages.forEach(function (message) {
+              $('#messages').append($('<li>').text(message.from + ": " + message.content));
+            });
+          }
+        });
+        window.scrollTo(0, document.body.scrollHeight);
+        $.ajax({
+          type: "POST",
+          url: "/index/read",
+          data: selectionData
+        });        
+      });
+      $('form').submit(function(){
+        event.preventDefault();
+        var curr = document.getElementById("current").innerText;
+        var selectionData = {
+          selected: selected,
+          current: curr
+        };
+        var dataSocket = {
+          msg: $('#m').val(),
+          selected: selected,
+          current: curr
+        };
+        $.ajax({
+          type: "POST",
+          url: "/index",
+          data: dataSocket
+        });
+        socket.emit('chat message', dataSocket);
+        window.scrollTo(0, document.body.scrollHeight);
+        $('#messages').append($('<li>').text(dataSocket.current + ": " + dataSocket.msg))
+        $('#m').val('');
+      });
+      socket.on('init', function(id){
+        event.preventDefault();
+        var curr = document.getElementById("current").innerText;
+        var dataInit = {
+          id: id,
+          current: curr
+        };
+        $.ajax({
+          type: "POST",
+          url: "/index/init",
+          data: dataInit,
+          success: function(data) {
+            console.log(data.id);
+          }
+        });
+      });
+      socket.on('chat message', function(data){
+        if(data.from == selected){
+          $('#messages').append($('<li>').text(data.from + ": " + data.msg));
+          var curr = document.getElementById("current").innerText;
+          var selectionData = {
+            selected: selected,
+            current: curr
+          }
+          $.ajax({
+            type: "POST",
+            url: "/index/read",
+            data: selectionData,
+            success: function(data) {
+              console.log("50");
+            }
+          });
+          window.scrollTo(0, document.body.scrollHeight);
+        } else{
+          $("button:contains('" + data.from + "')").removeClass("button-warning").addClass("button-error");
+        }
+      });
+    });
+    </script>
+  </body>
+</html>
